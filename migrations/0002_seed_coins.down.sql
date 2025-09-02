@@ -1,0 +1,1 @@
+DELETE FROM coins WHERE symbol IN ('BTC', 'ETH');

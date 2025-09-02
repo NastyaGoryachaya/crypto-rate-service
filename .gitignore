@@ -28,5 +28,17 @@ go.work.sum
 .env
 
 # Editor/IDE
-# .idea/
-# .vscode/
+ .idea/*
+ .vscode/
+/.idea/dataSources/526ab9f1-3e26-4725-9ef8-5e355392baf6/storage_v2/_src_/database/crypto.wfBurw/schema/information_schema.FNRwLQ.meta
+/.idea/dataSources/526ab9f1-3e26-4725-9ef8-5e355392baf6/storage_v2/_src_/database/crypto.wfBurw/schema/pg_catalog.0S1ZNQ.meta
+/.idea/dataSources/526ab9f1-3e26-4725-9ef8-5e355392baf6/storage_v2/_src_/database/crypto.wfBurw/schema/public.abK9xQ.meta
+/.idea/dataSources/526ab9f1-3e26-4725-9ef8-5e355392baf6/storage_v2/_src_/database/crypto.wfBurw.meta
+/.idea/dataSources/526ab9f1-3e26-4725-9ef8-5e355392baf6.xml
+/.idea/crypto-rate-service.iml
+/.idea/dataSources.local.xml
+/.idea/dataSources.xml
+/.idea/modules.xml
+/.idea/sqldialects.xml
+/.idea/vcs.xml
+/.idea/workspace.xml
