@@ -1,6 +1,8 @@
 package config
 
 import (
+	"flag"
+	"os"
 	"time"
 
 	"github.com/ilyakaznacheev/cleanenv"
@@ -63,10 +65,31 @@ type TelegramConfig struct {
 	DefaultAutoInterval int    `yaml:"default_auto_interval" env-default:"10"` // minutes
 }
 
-func LoadConfig(path string) (*Config, error) {
-	var cfg Config
-	if err := cleanenv.ReadConfig(path, &cfg); err != nil {
+func LoadConfig() (*Config, error) {
+	cfg := &Config{}
+
+	// Try to read from config file if specified
+	configPath := fetchConfigPath()
+	if configPath != "" {
+		if err := cleanenv.ReadConfig(configPath, cfg); err != nil {
+			return nil, err
+		}
+	}
+
+	// Read from environment variables
+	if err := cleanenv.ReadEnv(cfg); err != nil {
 		return nil, err
 	}
-	return &cfg, nil
+
+	return cfg, nil
+}
+
+func fetchConfigPath() string {
+	var res string
+	flag.StringVar(&res, "c", "", "config file path")
+	flag.Parse()
+	if res == "" {
+		res = os.Getenv("CONFIG_PATH")
+	}
+	return res
 }
