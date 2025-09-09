@@ -36,8 +36,8 @@ func (r *SubscriptionRepo) Disable(ctx context.Context, chatID int64) error {
 	return err
 }
 
-// Due возвращает chat_id, для которых наступило время отправки на момент now.
-func (r *SubscriptionRepo) Due(ctx context.Context, now time.Time) ([]int64, error) {
+// FindDue возвращает chat_id, для которых наступило время отправки на момент now.
+func (r *SubscriptionRepo) FindDue(ctx context.Context, now time.Time) ([]int64, error) {
 	query := `
 	SELECT chat_id
 	FROM subscriptions

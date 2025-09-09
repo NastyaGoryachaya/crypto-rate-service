@@ -9,7 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/NastyaGoryachaya/crypto-rate-service/internal/ports/errcode"
+	"github.com/NastyaGoryachaya/crypto-rate-service/internal/domain"
+	"github.com/NastyaGoryachaya/crypto-rate-service/internal/pkg/botfmt"
 	"gopkg.in/telebot.v4"
 )
 
@@ -31,27 +32,41 @@ func (b *Bot) handleRates(c telebot.Context) error {
 
 	args := c.Args()
 	if len(args) == 0 {
-		list, err := b.rates.GetCurrencyRates(ctx)
+		list, err := b.svc.GetLatest(ctx)
 		if err != nil {
-			return c.Send(translateBotError(errcode.Internal))
+			if errors.Is(err, domain.ErrPriceNotFound) {
+				return c.Send("Данные о цене не найдены")
+			}
+			return c.Send("Внутренняя ошибка сервиса, попробуйте позже")
 		}
 		if len(list) == 0 {
-			return c.Send(translateBotError(errcode.NotFoundPrices))
+			return c.Send("Данные о цене не найдены")
 		}
 		var bld strings.Builder
 		for _, r := range list {
-			bld.WriteString(formatRateLine(r))
+			bld.WriteString(botfmt.FormatRateLine(r))
 			bld.WriteByte('\n')
 		}
 		return c.Send(bld.String())
 	}
 
 	symbol := args[0]
-	item, err := b.rates.GetCurrencyRateBySymbol(ctx, symbol)
+	symbol = strings.ToUpper(symbol)
+	now := time.Now().UTC()
+	from := now.Add(-24 * time.Hour)
+	to := now
+
+	latest, minV, maxV, pct, err := b.svc.GetLatestBySymbol(ctx, symbol, from, to)
 	if err != nil {
-		return c.Send(translateBotError(errcode.NotFoundCoins))
+		if errors.Is(err, domain.ErrCoinNotFound) {
+			return c.Send("Валюта не найдена")
+		}
+		if errors.Is(err, domain.ErrPriceNotFound) {
+			return c.Send("Данные о цене не найдены")
+		}
+		return c.Send("Внутренняя ошибка сервиса, попробуйте позже")
 	}
-	return c.Send(formatRateDetails(item))
+	return c.Send(botfmt.FormatRateDetails(latest, minV, maxV, pct))
 }
 
 // handleStartAuto — включает авторассылку курсов для чата с указанным интервалом в минутах
@@ -85,7 +100,7 @@ func (b *Bot) handleStartAuto(c telebot.Context) error {
 	defer cancel()
 
 	if err := b.subs.Enable(ctx, chatID, mins); err != nil {
-		return c.Send(translateBotError(errcode.Internal))
+		return c.Send("Внутренняя ошибка сервиса, попробуйте позже")
 	}
 	b.logger.Debug("bot: startauto enabled",
 		slog.Int64("chat_id", chatID),
@@ -107,7 +122,7 @@ func (b *Bot) handleStopAuto(c telebot.Context) error {
 	defer cancel()
 
 	if err := b.subs.Disable(ctx, c.Chat().ID); err != nil {
-		return c.Send(translateBotError(errcode.Internal))
+		return c.Send("Внутренняя ошибка сервиса, попробуйте позже")
 	}
 	return c.Send("Автообновления отключены!")
 }

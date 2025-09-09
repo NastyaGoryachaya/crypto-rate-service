@@ -9,66 +9,45 @@ import (
 	"log/slog"
 
 	"github.com/NastyaGoryachaya/crypto-rate-service/internal/domain"
+	"github.com/NastyaGoryachaya/crypto-rate-service/internal/interfaces"
 )
 
-type Service interface {
-	FetchAndSaveCurrency(ctx context.Context) error
-}
-
-type RatesProvider interface {
-	FetchRates(ctx context.Context) ([]RateQuote, error)
-}
-
-type CoinReader interface {
-	GetAllCoins(ctx context.Context) ([]domain.Coin, error)
-}
-
-type PriceWriter interface {
-	SavePrice(ctx context.Context, price domain.Price) error
-}
-
-type RateQuote struct {
-	CoinSymbol string
-	Value      float64
-	Timestamp  time.Time
-}
-
-type fetchService struct {
-	ratesProvider RatesProvider
-	coinRepo      CoinReader
-	priceRepo     PriceWriter
-	logger        *slog.Logger
+type Service struct {
+	cryptoProvider interfaces.CryptoProvider
+	storage        interfaces.Storage
+	logger         *slog.Logger
 }
 
 // NewService — конструктор сервиса для получения и сохранения курсов валют.
-func NewService(ratesProvider RatesProvider, coinRepo CoinReader, priceRepo PriceWriter, logger *slog.Logger) Service {
-	return &fetchService{
-		ratesProvider: ratesProvider,
-		coinRepo:      coinRepo,
-		priceRepo:     priceRepo,
-		logger:        logger,
+func NewService(cryptoProvider interfaces.CryptoProvider, storage interfaces.Storage, logger *slog.Logger) *Service {
+	return &Service{
+		cryptoProvider: cryptoProvider,
+		storage:        storage,
+		logger:         logger,
 	}
 }
 
 // FetchAndSaveCurrency — получает список монет, запрашивает их курсы у провайдера и сохраняет цены в БД.
-func (s *fetchService) FetchAndSaveCurrency(ctx context.Context) error {
-	coins, err := s.coinRepo.GetAllCoins(ctx)
+func (s *Service) FetchAndSaveCurrency(ctx context.Context) error {
+	coins, err := s.storage.GetAllCoins(ctx)
 	if err != nil {
 		s.logger.Error("fetch all coins", "err", err)
 		return fmt.Errorf("fetch all coins: %w", err)
 	}
 
-	rates, err := s.ratesProvider.FetchRates(ctx)
+	rates, err := s.cryptoProvider.FetchRates(ctx)
 	if err != nil {
 		s.logger.Error("fetch rates", "err", err)
 		return fmt.Errorf("fetch rates: %w", err)
 	}
 
 	// создаём map для быстрого поиска цены по символу
-	rateMap := make(map[string]RateQuote)
+	rateMap := make(map[string]domain.Coin)
 	for _, r := range rates {
-		rateMap[strings.ToUpper(r.CoinSymbol)] = r
+		rateMap[strings.ToUpper(r.Symbol)] = r
 	}
+
+	items := make([]domain.Coin, 0, len(coins))
 
 	for _, coin := range coins {
 		sym := strings.ToUpper(coin.Symbol)
@@ -78,21 +57,18 @@ func (s *fetchService) FetchAndSaveCurrency(ctx context.Context) error {
 			continue // нет данных по этой монете в ответе API
 		}
 
-		// предпочтительно API время; fallback to now UTC
-		ts := r.Timestamp
-		if ts.IsZero() {
-			ts = time.Now().UTC()
+		price := r
+		price.Symbol = coin.Symbol
+		if price.UpdatedAt.IsZero() {
+			price.UpdatedAt = time.Now().UTC()
 		}
 
-		price := domain.Price{
-			CoinSymbol: coin.Symbol,
-			Value:      r.Value,
-			Timestamp:  ts,
-		}
-
-		if err := s.priceRepo.SavePrice(ctx, price); err != nil {
-			s.logger.Warn("save price to db failed", "symbol", coin.Symbol, "err", err)
-		}
+		items = append(items, price)
 	}
+
+	if err := s.storage.SaveCoins(ctx, items); err != nil {
+		s.logger.Warn("save prices to db failed", "count", len(items), "err", err)
+	}
+
 	return nil
 }

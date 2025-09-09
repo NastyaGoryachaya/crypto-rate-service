@@ -9,16 +9,15 @@ import (
 	"strings"
 	"time"
 
-	botpkg "github.com/NastyaGoryachaya/crypto-rate-service/internal/bot"
-	"github.com/NastyaGoryachaya/crypto-rate-service/internal/bot/adapter"
 	"github.com/NastyaGoryachaya/crypto-rate-service/internal/config"
+	"github.com/NastyaGoryachaya/crypto-rate-service/internal/infra/api_client"
 	"github.com/NastyaGoryachaya/crypto-rate-service/internal/infra/db"
-	"github.com/NastyaGoryachaya/crypto-rate-service/internal/infra/stockapi"
 	repopg "github.com/NastyaGoryachaya/crypto-rate-service/internal/repository/postgres"
 	"github.com/NastyaGoryachaya/crypto-rate-service/internal/scheduler"
 	fetchsvc "github.com/NastyaGoryachaya/crypto-rate-service/internal/service/fetch"
 	ratesvc "github.com/NastyaGoryachaya/crypto-rate-service/internal/service/rates"
-	"github.com/NastyaGoryachaya/crypto-rate-service/internal/transport/httptransport"
+	botpkg "github.com/NastyaGoryachaya/crypto-rate-service/internal/transport/bot"
+	"github.com/NastyaGoryachaya/crypto-rate-service/internal/transport/web"
 	"github.com/NastyaGoryachaya/crypto-rate-service/pkg/logger"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
@@ -37,8 +36,8 @@ type App struct {
 	priceRepo *repopg.PriceRepo
 	subsRepo  *repopg.SubscriptionRepo
 
-	rates ratesvc.Service
-	fetch fetchsvc.Service
+	rates *ratesvc.Service
+	fetch *fetchsvc.Service
 
 	updater *scheduler.Scheduler
 
@@ -62,7 +61,6 @@ func NewApp() (*App, error) {
 		appLog.Error("db connect failed", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
-	defer pool.Close()
 
 	app := &App{cfg: *cfg, log: appLog, db: pool}
 
@@ -76,7 +74,7 @@ func NewApp() (*App, error) {
 	app.e = e
 
 	// client for API CoinGecko
-	provider := stockapi.NewClient(stockapi.Config{
+	provider := api_client.NewClient(api_client.Config{
 		BaseURL:   cfg.CoinGecko.BaseURL,
 		Coins:     cfg.CoinGecko.Coins,
 		Currency:  cfg.CoinGecko.Currency,
@@ -89,7 +87,7 @@ func NewApp() (*App, error) {
 	app.fetch = fetchsvc.NewService(provider, app.coinRepo, app.priceRepo, appLog)
 
 	// handlers
-	rh := httptransport.NewRatesHandler(appLog, app.rates, cfg.Server.ReadTimeout)
+	rh := web.NewRatesHandler(appLog, app.rates, cfg.Server.ReadTimeout)
 	rh.RegisterRoutes(e)
 
 	app.serv = &http.Server{
@@ -116,7 +114,7 @@ func NewApp() (*App, error) {
 
 		botApp, err := botpkg.New(
 			botpkg.Config{Token: token, LongPollTimeout: 10 * time.Second},
-			adapter.NewRatesReader(app.rates),
+			app.rates,
 			app.subsRepo,
 			appLog,
 		)

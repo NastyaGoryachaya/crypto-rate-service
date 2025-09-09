@@ -25,7 +25,7 @@ func TestFetchAndSaveCurrency_Success(t *testing.T) {
 	api := fetchmocks.NewMockRatesProvider(ctrl)
 
 	coins := []domain.Coin{{Symbol: "BTC"}, {Symbol: "ETH"}}
-	rates := []fetch.RateQuote{
+	rates := []domain.Price{
 		{CoinSymbol: "BTC", Value: 70000},
 		{CoinSymbol: "ETH", Value: 3500},
 	}
@@ -80,7 +80,7 @@ func TestFetchAndSaveCurrency_MissingRateForCoin(t *testing.T) {
 	api := fetchmocks.NewMockRatesProvider(ctrl)
 
 	coins := []domain.Coin{{Symbol: "BTC"}, {Symbol: "ETH"}}
-	rates := []fetch.RateQuote{{CoinSymbol: "BTC", Value: 70000}} // ETH отсутствует
+	rates := []domain.Price{{CoinSymbol: "BTC", Value: 70000}} // ETH отсутствует
 
 	api.EXPECT().FetchRates(gomock.Any()).Return(rates, nil).Times(1)
 	coinRepo.EXPECT().GetAllCoins(gomock.Any()).Return(coins, nil).Times(1)
@@ -173,7 +173,7 @@ func TestFetchAndSaveCurrency_SaveErrorRerCoin(t *testing.T) {
 	api := fetchmocks.NewMockRatesProvider(ctrl)
 
 	coins := []domain.Coin{{Symbol: "BTC"}, {Symbol: "ETH"}}
-	rates := []fetch.RateQuote{
+	rates := []domain.Price{
 		{CoinSymbol: "BTC", Value: 70000},
 		{CoinSymbol: "ETH", Value: 3500},
 	}
@@ -217,7 +217,7 @@ func TestFetchAndSaveCurrency_TimestampWindow(t *testing.T) {
 	api := fetchmocks.NewMockRatesProvider(ctrl)
 
 	coins := []domain.Coin{{Symbol: "BTC"}}
-	rates := []fetch.RateQuote{{CoinSymbol: "BTC", Value: 70000}}
+	rates := []domain.Price{{CoinSymbol: "BTC", Value: 70000}}
 
 	api.EXPECT().FetchRates(gomock.Any()).Return(rates, nil).Times(1)
 	coinRepo.EXPECT().GetAllCoins(gomock.Any()).Return(coins, nil).Times(1)

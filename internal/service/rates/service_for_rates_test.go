@@ -3,18 +3,16 @@ package rates
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"testing"
 	"time"
 
+	"log/slog"
+
 	"github.com/NastyaGoryachaya/crypto-rate-service/internal/domain"
+	"github.com/NastyaGoryachaya/crypto-rate-service/internal/pkg/utils"
 	ratesmocks "github.com/NastyaGoryachaya/crypto-rate-service/internal/service/rates/mocks"
 	"github.com/golang/mock/gomock"
 )
-
-type fixedClock struct{ t time.Time }
-
-func (f fixedClock) Now() time.Time { return f.t }
 
 func setupSvc(t *testing.T, fixed time.Time) (context.Context, *gomock.Controller,
 	*ratesmocks.MockCoinReader, *ratesmocks.MockPriceReader, Service) {
@@ -23,7 +21,13 @@ func setupSvc(t *testing.T, fixed time.Time) (context.Context, *gomock.Controlle
 	ctrl := gomock.NewController(t)
 	coinRepo := ratesmocks.NewMockCoinReader(ctrl)
 	priceRepo := ratesmocks.NewMockPriceReader(ctrl)
-	svc := NewServiceWithClock(coinRepo, priceRepo, fixedClock{t: fixed}, slog.Default())
+
+	// Freeze time for tests
+	oldNow := utils.NowFunc
+	utils.NowFunc = func() time.Time { return fixed }
+	t.Cleanup(func() { utils.NowFunc = oldNow })
+
+	svc := NewService(coinRepo, priceRepo, slog.Default())
 	return ctx, ctrl, coinRepo, priceRepo, svc
 }
 
@@ -74,8 +78,8 @@ func TestGetAllRates_SkipNilLatestPrice(t *testing.T) {
 	priceRepo.EXPECT().GetLatestPrice(gomock.Any(), "BTC").Return(nil, nil)
 
 	_, err := svc.GetAllRates(ctx)
-	if err == nil || !errors.Is(err, ErrPriceNotFound) {
-		t.Fatalf("expected ErrPriceNotFound, got: %v", err)
+	if err == nil || !errors.Is(err, domain.ErrPriceNotFound) {
+		t.Fatalf("expected domain.ErrPriceNotFound, got %v", err)
 	}
 }
 
@@ -89,8 +93,8 @@ func TestGetRateBySymbol_CoinNotFound(t *testing.T) {
 	coinRepo.EXPECT().GetCoinBySymbol(gomock.Any(), "BTC").Return(nil, nil)
 
 	_, err := svc.GetRateBySymbol(ctx, "BTC")
-	if err == nil || !errors.Is(err, ErrCoinNotFound) {
-		t.Fatalf("expected ErrCoinNotFound, got: %v", err)
+	if err == nil || !errors.Is(err, domain.ErrCoinNotFound) {
+		t.Fatalf("expected domain.ErrCoinNotFound, got: %v", err)
 	}
 }
 
@@ -103,8 +107,8 @@ func TestGetRateBySymbol_MinMaxError(t *testing.T) {
 	priceRepo.EXPECT().GetMinAndMaxPrices(gomock.Any(), "BTC", fixed.Add(-24*time.Hour)).Return(domain.Price{}, domain.Price{}, errors.New("minmax failed"))
 
 	_, err := svc.GetRateBySymbol(ctx, "BTC")
-	if err == nil || !errors.Is(err, ErrMinMaxPrice) {
-		t.Fatalf("expected ErrMinMaxPrice, got: %v", err)
+	if err == nil || !errors.Is(err, domain.ErrPriceNotFound) {
+		t.Fatalf("expected domain.ErrPriceNotFound, got: %v", err)
 	}
 }
 
@@ -122,8 +126,8 @@ func TestGetRateBySymbol_OldPriceMissing(t *testing.T) {
 	priceRepo.EXPECT().GetPriceBefore(gomock.Any(), "BTC", fixed.Add(-1*time.Hour)).Return(nil, nil)
 
 	_, err := svc.GetRateBySymbol(ctx, "BTC")
-	if err == nil || !errors.Is(err, ErrPriceNotFound) {
-		t.Fatalf("expected ErrPriceNotFound, got: %v", err)
+	if err == nil || !errors.Is(err, domain.ErrPriceNotFound) {
+		t.Fatalf("expected domain.ErrPriceNotFound, got: %v", err)
 	}
 }
 
@@ -141,8 +145,8 @@ func TestGetRateBySymbol_OldPriceZero(t *testing.T) {
 	priceRepo.EXPECT().GetPriceBefore(gomock.Any(), "BTC", fixed.Add(-1*time.Hour)).Return(&domain.Price{CoinSymbol: "BTC", Value: 0, Timestamp: fixed.Add(-1 * time.Hour)}, nil)
 
 	_, err := svc.GetRateBySymbol(ctx, "BTC")
-	if err == nil || !errors.Is(err, ErrHourAgoPrice) {
-		t.Fatalf("expected ErrHourAgoPrice, got: %v", err)
+	if err == nil || !errors.Is(err, domain.ErrPriceNotFound) {
+		t.Fatalf("expected domain.ErrPriceNotFound, got: %v", err)
 	}
 }
 
@@ -161,8 +165,8 @@ func TestGetRateBySymbol_CurrentMissing(t *testing.T) {
 	priceRepo.EXPECT().GetLatestPrice(gomock.Any(), "BTC").Return(nil, nil)
 
 	_, err := svc.GetRateBySymbol(ctx, "BTC")
-	if err == nil || !errors.Is(err, ErrPriceNotFound) {
-		t.Fatalf("expected ErrPriceNotFound, got: %v", err)
+	if err == nil || !errors.Is(err, domain.ErrPriceNotFound) {
+		t.Fatalf("expected domain.ErrPriceNotFound, got: %v", err)
 	}
 }
 

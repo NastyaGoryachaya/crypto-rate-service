@@ -5,21 +5,21 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/NastyaGoryachaya/crypto-rate-service/internal/service/fetch"
+	"github.com/NastyaGoryachaya/crypto-rate-service/internal/interfaces"
 )
 
 type Scheduler struct {
-	fetchService fetch.Service
-	interval     time.Duration
-	logger       *slog.Logger
+	ingestion interfaces.Ingestion
+	interval  time.Duration
+	logger    *slog.Logger
 }
 
 // NewScheduler — конструктор планировщика фонового обновления курсов
-func NewScheduler(fetchService fetch.Service, interval time.Duration, logger *slog.Logger) *Scheduler {
+func NewScheduler(ingestion interfaces.Ingestion, interval time.Duration, logger *slog.Logger) *Scheduler {
 	return &Scheduler{
-		fetchService: fetchService,
-		interval:     interval,
-		logger:       logger,
+		ingestion: ingestion,
+		interval:  interval,
+		logger:    logger,
 	}
 }
 
@@ -48,7 +48,7 @@ func (s *Scheduler) Start(ctx context.Context) {
 // runOnce — одна итерация: получить курсы и сохранить их в БД
 func (s *Scheduler) runOnce(ctx context.Context) {
 	s.logger.Debug("tick: running fetch cycle")
-	if err := s.fetchService.FetchAndSaveCurrency(ctx); err != nil {
+	if err := s.ingestion.FetchAndSaveCurrency(ctx); err != nil {
 		s.logger.Error("tick: fetch failed", slog.Any("err", err))
 	} else {
 		s.logger.Debug("tick: fetch cycle completed")

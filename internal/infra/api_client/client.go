@@ -1,4 +1,4 @@
-package stockapi
+package api_client
 
 import (
 	"context"
@@ -9,19 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/NastyaGoryachaya/crypto-rate-service/internal/service/fetch"
+	"github.com/NastyaGoryachaya/crypto-rate-service/internal/config"
+	"github.com/NastyaGoryachaya/crypto-rate-service/internal/domain"
 )
 
-type Config struct {
-	BaseURL   string
-	Coins     []string //напр. []string{"bitcoin", "ethereum"}
-	Currency  string
-	Timeout   time.Duration
-	UserAgent string
-}
-
 type Client struct {
-	cfg        Config
+	cfg        config.CoinGeckoConfig
 	httpClient *http.Client
 }
 
@@ -33,7 +26,7 @@ type coingeckoResponse struct {
 }
 
 // NewClient - Создаёт нового клиента для работы с API CoinGecko.
-func NewClient(cfg Config) *Client {
+func NewClient(cfg config.CoinGeckoConfig) *Client {
 	return &Client{
 		cfg: cfg,
 		httpClient: &http.Client{
@@ -42,8 +35,8 @@ func NewClient(cfg Config) *Client {
 	}
 }
 
-// FetchRates — получает курсы валют по API CoinGecko и преобразует их в RateQuote.
-func (c *Client) FetchRates(ctx context.Context) ([]fetch.RateQuote, error) {
+// FetchRates — получает курсы валют по API CoinGecko
+func (c *Client) FetchRates(ctx context.Context) ([]domain.Coin, error) {
 	u, err := url.Parse(c.cfg.BaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid base URL: %w", err)
@@ -83,12 +76,12 @@ func (c *Client) FetchRates(ctx context.Context) ([]fetch.RateQuote, error) {
 		return nil, fmt.Errorf("decoding response: %w", err)
 	}
 
-	var result []fetch.RateQuote
+	var result []domain.Coin
 	for _, d := range data {
-		result = append(result, fetch.RateQuote{
-			CoinSymbol: strings.ToUpper(d.Symbol),
-			Value:      d.CurrentPrice,
-			Timestamp:  time.Now().UTC(),
+		result = append(result, domain.Coin{
+			Symbol:    strings.ToUpper(d.Symbol),
+			Price:     d.CurrentPrice,
+			UpdatedAt: time.Now().UTC(),
 		})
 	}
 	return result, nil
