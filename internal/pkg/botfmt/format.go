@@ -6,7 +6,7 @@ import (
 	"github.com/NastyaGoryachaya/crypto-rate-service/internal/domain"
 )
 
-// FormatRateLine — короткая строка для рассылок (scheduler)
+// FormatRateLine — короткая строка для рассылок /rates
 func FormatRateLine(r domain.Coin) string {
 	return fmt.Sprintf("%s | Текущая цена: %s | Обновлено: %s",
 		r.Symbol,

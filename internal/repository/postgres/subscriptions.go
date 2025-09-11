@@ -11,13 +11,13 @@ type SubscriptionRepo struct {
 	db *pgxpool.Pool
 }
 
-func NewSubscriptionRepository(db *pgxpool.Pool) *SubscriptionRepo {
+func NewSubscriptionRepo(db *pgxpool.Pool) *SubscriptionRepo {
 	return &SubscriptionRepo{db: db}
 }
 
-// Enable включает/обновляет подписку для заданного chatID с указанным интервалом (в минутах).
+// MarkEnabled включает/обновляет подписку для заданного chatID с указанным интервалом (в минутах).
 // last_sent_at не трогаем — если была подписка ранее, оставляем как есть.
-func (r *SubscriptionRepo) Enable(ctx context.Context, chatID int64, intervalMinutes int) error {
+func (r *SubscriptionRepo) MarkEnabled(ctx context.Context, chatID int64, intervalMinutes int) error {
 	query := `
 	INSERT INTO subscriptions (chat_id, interval_minutes, enabled, last_sent_at)
 	VALUES ($1, $2, TRUE, NULL)
@@ -29,8 +29,8 @@ func (r *SubscriptionRepo) Enable(ctx context.Context, chatID int64, intervalMin
 	return err
 }
 
-// Disable выключает подписку для chatID.
-func (r *SubscriptionRepo) Disable(ctx context.Context, chatID int64) error {
+// MarkDisabled выключает подписку для chatID.
+func (r *SubscriptionRepo) MarkDisabled(ctx context.Context, chatID int64) error {
 	query := `UPDATE subscriptions SET enabled = FALSE WHERE chat_id = $1`
 	_, err := r.db.Exec(ctx, query, chatID)
 	return err

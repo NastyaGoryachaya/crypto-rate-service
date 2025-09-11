@@ -10,7 +10,9 @@ import (
 
 	"log/slog"
 
+	"github.com/NastyaGoryachaya/crypto-rate-service/internal/consts"
 	"github.com/NastyaGoryachaya/crypto-rate-service/internal/domain"
+	errs "github.com/NastyaGoryachaya/crypto-rate-service/internal/errors"
 	"github.com/NastyaGoryachaya/crypto-rate-service/internal/interfaces"
 	"github.com/labstack/echo/v4"
 )
@@ -87,7 +89,7 @@ func (h *RatesHandler) GetRates(c echo.Context) error {
 		return c.JSON(http.StatusOK, []APIRate{})
 	}
 	if err != nil {
-		if errors.Is(err, domain.ErrPriceNotFound) {
+		if errors.Is(err, errs.ErrPriceNotFound) {
 			return c.JSON(http.StatusNotFound, echo.Map{
 				"error": "prices_not_found",
 			})
@@ -117,6 +119,14 @@ func (h *RatesHandler) GetRateBySymbol(c echo.Context) error {
 		})
 	}
 
+	// Проверяем, поддерживается ли символ
+	if !consts.IsTracked(symbol) {
+		return c.JSON(http.StatusBadRequest, echo.Map{
+			"error":  "unsupported_symbol",
+			"symbol": symbol,
+		})
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request().Context(), h.timeout)
 	defer cancel()
 
@@ -125,12 +135,12 @@ func (h *RatesHandler) GetRateBySymbol(c echo.Context) error {
 
 	latest, minV, maxV, pct, err := h.svc.GetLatestBySymbol(ctx, symbol, from, now)
 	if err != nil {
-		if errors.Is(err, domain.ErrCoinNotFound) {
+		if errors.Is(err, errs.ErrCoinNotFound) {
 			return c.JSON(http.StatusNotFound, echo.Map{
 				"error":  "coin_not_found",
 				"symbol": symbol,
 			})
-		} else if errors.Is(err, domain.ErrPriceNotFound) {
+		} else if errors.Is(err, errs.ErrPriceNotFound) {
 			return c.JSON(http.StatusNotFound, echo.Map{
 				"error":  "prices_not_found",
 				"symbol": symbol,

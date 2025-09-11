@@ -3,10 +3,9 @@ package bot
 import (
 	"context"
 	"log/slog"
-	"time"
 
-	"github.com/NastyaGoryachaya/crypto-rate-service/internal/config"
 	"github.com/NastyaGoryachaya/crypto-rate-service/internal/interfaces"
+	"github.com/NastyaGoryachaya/crypto-rate-service/internal/schedulers/scheduler_dispatcher"
 	"gopkg.in/telebot.v4"
 )
 
@@ -15,22 +14,12 @@ type Bot struct {
 	bot       *telebot.Bot
 	svc       interfaces.Service
 	subs      interfaces.SubscriptionCommander
-	scheduler *scheduler
+	scheduler *scheduler_dispatcher.Scheduler
 	logger    *slog.Logger
 }
 
 // New создаёт новый экземпляр приложения
-func New(cfg config.TelegramConfig, svc interfaces.Service, subs interfaces.SubscriptionCommander, logger *slog.Logger, scheduler *scheduler) (*Bot, error) {
-	const defaultPollTimeout = 10 * time.Second
-
-	b, err := telebot.NewBot(telebot.Settings{
-		Token:  cfg.Token,
-		Poller: &telebot.LongPoller{Timeout: defaultPollTimeout},
-	})
-	if err != nil {
-		return nil, err
-	}
-
+func New(b *telebot.Bot, svc interfaces.Service, subs interfaces.SubscriptionCommander, logger *slog.Logger, scheduler *scheduler_dispatcher.Scheduler) (*Bot, error) {
 	bot := &Bot{
 		bot:       b,
 		svc:       svc,
@@ -50,7 +39,7 @@ func New(cfg config.TelegramConfig, svc interfaces.Service, subs interfaces.Subs
 // Start запускает бота и планировщик
 func (b *Bot) Start(ctx context.Context) {
 	if b.scheduler != nil {
-		go b.scheduler.run(ctx)
+		go b.scheduler.Run(ctx)
 	}
 	go b.bot.Start()
 }

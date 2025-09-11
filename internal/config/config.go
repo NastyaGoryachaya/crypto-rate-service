@@ -12,7 +12,7 @@ import (
 
 type Config struct {
 	Server    ServerConfig    `yaml:"server"`
-	Scheduler SchedulerConfig `yaml:"scheduler"`
+	Scheduler SchedulerConfig `yaml:"schedulers"`
 	Postgres  PostgresConfig  `yaml:"postgres"`
 	CoinGecko CoinGeckoConfig `yaml:"coingecko"`
 	Telegram  TelegramConfig  `yaml:"telegram"`

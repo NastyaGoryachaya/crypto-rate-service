@@ -1,4 +1,4 @@
-package scheduler
+package scheduler_fetcher
 
 import (
 	"context"
@@ -25,8 +25,8 @@ func NewScheduler(ingestion interfaces.Ingestion, interval time.Duration, logger
 
 // Start — запускает периодическое выполнение задачи до остановки контекста
 func (s *Scheduler) Start(ctx context.Context) {
-	s.logger.Info("scheduler started")
-	s.logger.Debug("scheduler interval configured", slog.Duration("interval", s.interval))
+	s.logger.Info("schedulers started")
+	s.logger.Debug("schedulers interval configured", slog.Duration("interval", s.interval))
 
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
@@ -39,7 +39,7 @@ func (s *Scheduler) Start(ctx context.Context) {
 		case <-ticker.C:
 			s.runOnce(ctx)
 		case <-ctx.Done():
-			s.logger.Info("scheduler stopped")
+			s.logger.Info("schedulers stopped")
 			return
 		}
 	}

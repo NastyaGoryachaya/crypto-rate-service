@@ -6,49 +6,35 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/NastyaGoryachaya/crypto-rate-service/internal/config"
 	"github.com/NastyaGoryachaya/crypto-rate-service/internal/infra/api_client"
 	"github.com/NastyaGoryachaya/crypto-rate-service/internal/infra/db"
 	repopg "github.com/NastyaGoryachaya/crypto-rate-service/internal/repository/postgres"
-	"github.com/NastyaGoryachaya/crypto-rate-service/internal/scheduler"
-	fetchsvc "github.com/NastyaGoryachaya/crypto-rate-service/internal/service/fetch"
+	"github.com/NastyaGoryachaya/crypto-rate-service/internal/schedulers/scheduler_dispatcher"
+	"github.com/NastyaGoryachaya/crypto-rate-service/internal/schedulers/scheduler_fetcher"
 	ratesvc "github.com/NastyaGoryachaya/crypto-rate-service/internal/service/rates"
+	subsvc "github.com/NastyaGoryachaya/crypto-rate-service/internal/service/subscription"
 	botpkg "github.com/NastyaGoryachaya/crypto-rate-service/internal/transport/bot"
 	"github.com/NastyaGoryachaya/crypto-rate-service/internal/transport/web"
 	"github.com/NastyaGoryachaya/crypto-rate-service/pkg/logger"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/gommon/log"
+	"gopkg.in/telebot.v4"
 )
 
-type App struct {
-	cfg config.Config
-	log *slog.Logger
+func Run() error {
+	// context + signals
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	db   *pgxpool.Pool
-	e    *echo.Echo
-	serv *http.Server
-
-	coinRepo  *repopg.CoinRepo
-	priceRepo *repopg.PriceRepo
-	subsRepo  *repopg.SubscriptionRepo
-
-	rates *ratesvc.Service
-	fetch *fetchsvc.Service
-
-	updater *scheduler.Scheduler
-
-	bot *botpkg.Bot
-}
-
-func NewApp() (*App, error) {
 	// config
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// logger
@@ -62,19 +48,12 @@ func NewApp() (*App, error) {
 		os.Exit(1)
 	}
 
-	app := &App{cfg: *cfg, log: appLog, db: pool}
-
 	// repo
-	app.coinRepo = repopg.NewCoinRepository(pool)
-	app.priceRepo = repopg.NewPriceRepository(pool)
-	app.subsRepo = repopg.NewSubscriptionRepository(pool)
-
-	// echo
-	e := echo.New()
-	app.e = e
+	coinRepo := repopg.NewCoinRepo(pool)
+	subsRepo := repopg.NewSubscriptionRepo(pool)
 
 	// client for API CoinGecko
-	provider := api_client.NewClient(api_client.Config{
+	provider := api_client.NewClient(config.CoinGeckoConfig{
 		BaseURL:   cfg.CoinGecko.BaseURL,
 		Coins:     cfg.CoinGecko.Coins,
 		Currency:  cfg.CoinGecko.Currency,
@@ -83,14 +62,24 @@ func NewApp() (*App, error) {
 	})
 
 	// services
-	app.rates = ratesvc.NewService(app.coinRepo, app.priceRepo, appLog)
-	app.fetch = fetchsvc.NewService(provider, app.coinRepo, app.priceRepo, appLog)
+	ratesSvc := ratesvc.NewService(coinRepo, provider, appLog)
 
-	// handlers
-	rh := web.NewRatesHandler(appLog, app.rates, cfg.Server.ReadTimeout)
+	// subscription service (бот)
+	tbot, err := telebot.NewBot(telebot.Settings{
+		Token:  cfg.Telegram.Token,
+		Poller: &telebot.LongPoller{Timeout: 10 * time.Second},
+	})
+	if err != nil {
+		return err
+	}
+	subsSvc := subsvc.New(tbot, subsRepo, provider, appLog)
+
+	// http
+	e := echo.New()
+	rh := web.NewRatesHandler(appLog, ratesSvc, cfg.Server.ReadTimeout)
 	rh.RegisterRoutes(e)
 
-	app.serv = &http.Server{
+	serv := &http.Server{
 		Addr:         cfg.Server.Addr,
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
@@ -98,81 +87,63 @@ func NewApp() (*App, error) {
 		Handler:      e,
 	}
 
-	// scheduler
+	// schedulers
+	var updater *scheduler_fetcher.Scheduler
 	if cfg.Scheduler.Enabled {
-		app.updater = scheduler.NewScheduler(app.fetch, cfg.Scheduler.Interval, appLog)
+		updater = scheduler_fetcher.NewScheduler(ratesSvc, cfg.Scheduler.Interval, appLog)
 	}
 
-	// telegram-bot
+	// telegram bot
+	var bot *botpkg.Bot
 	if cfg.Telegram.Enabled {
-		// Если бот включён, отсутствие токена — ошибка конфигурации
 		token := strings.TrimSpace(cfg.Telegram.Token)
 		if token == "" {
-			log.Error("telegram enabled but TELEGRAM_BOT_TOKEN is empty")
-			return nil, errors.New("telegram token is empty")
+			return errors.New("telegram enabled but TELEGRAM_BOT_TOKEN is empty")
 		}
-
-		botApp, err := botpkg.New(
-			botpkg.Config{Token: token, LongPollTimeout: 10 * time.Second},
-			app.rates,
-			app.subsRepo,
+		botSched := scheduler_dispatcher.NewScheduler(subsSvc, cfg.Scheduler.Interval, appLog)
+		bot, err = botpkg.New(
+			tbot,
+			ratesSvc,
+			subsSvc, // implements SubscriptionCommander
 			appLog,
+			botSched,
 		)
 		if err != nil {
-			log.Error("telegram init failed", slog.String("error", err.Error()))
-			return nil, err
+			return err
 		}
-		app.bot = botApp
 	}
-	log.Info("app initialized",
-		slog.Bool("telegram_enabled", cfg.Telegram.Enabled),
-		slog.Bool("bot_attached", app.bot != nil),
-		slog.String("http_addr", cfg.Server.Addr),
-	)
-	return app, nil
-}
-
-// Run - запуск приложения
-func (a *App) Run(ctx context.Context) error {
-	if a.updater != nil {
-		a.log.Info("starting updater")
-		go a.updater.Start(ctx)
+	// starting goroutines
+	if updater != nil {
+		appLog.Info("starting updater")
+		go updater.Start(ctx)
 	}
 
-	if a.bot != nil {
-		a.log.Info("starting bot")
-		go a.bot.Start(ctx)
+	if bot != nil {
+		appLog.Info("starting subscription bot")
+		go bot.Start(ctx)
 	}
 
-	a.log.Info("starting server", slog.String("addr", a.cfg.Server.Addr))
+	appLog.Info("starting http server", slog.String("addr", cfg.Server.Addr))
 	go func() {
-		if err := a.e.StartServer(a.serv); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			a.log.Error("http server error", slog.String("error", err.Error()))
+		if err := e.StartServer(serv); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			appLog.Error("http server error", slog.String("error", err.Error()))
 		}
 	}()
-	<-ctx.Done()
-	return a.Shutdown(context.Background())
-}
 
-// Shutdown - завершение приложения
-func (a *App) Shutdown(ctx context.Context) error {
-	shCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	// wait stop
+	<-ctx.Done()
+
+	// graceful shutdown
+	shCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if a.e != nil {
-		if err := a.e.Shutdown(shCtx); err != nil {
-			a.log.Error("http shutdown error", slog.String("error", err.Error()))
-		}
+	if e != nil {
+		_ = e.Shutdown(shCtx)
+	}
+	if bot != nil {
+		bot.Stop()
 	}
 
-	if a.bot != nil {
-		a.bot.Stop()
-	}
-
-	if a.db != nil {
-		a.db.Close()
-	}
-
-	a.log.Info("application stopped")
+	appLog.Info("crypto-rate-service stopped")
 	return nil
 }

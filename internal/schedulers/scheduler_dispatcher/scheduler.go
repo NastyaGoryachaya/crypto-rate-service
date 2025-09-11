@@ -1,4 +1,4 @@
-package bot
+package scheduler_dispatcher
 
 import (
 	"context"
@@ -8,41 +8,41 @@ import (
 	"github.com/NastyaGoryachaya/crypto-rate-service/internal/interfaces"
 )
 
-type scheduler struct {
+type Scheduler struct {
 	svc         interfaces.SubscriptionDispatcher
 	checkPeriod time.Duration
 	logger      *slog.Logger
 }
 
-func newScheduler(svc interfaces.SubscriptionDispatcher, period time.Duration, logger *slog.Logger) *scheduler {
+func NewScheduler(svc interfaces.SubscriptionDispatcher, period time.Duration, logger *slog.Logger) *Scheduler {
 	if period <= 0 {
 		period = time.Minute
 	}
-	logger.Debug("bot scheduler configured", slog.Duration("period", period))
-	return &scheduler{svc: svc, checkPeriod: period, logger: logger}
+	logger.Debug("subscription schedulers configured", slog.Duration("period", period))
+	return &Scheduler{svc: svc, checkPeriod: period, logger: logger}
 }
 
 // Run - основной цикл: раз в checkPeriod проверяем, кому пора отправить сообщение.
-func (s *scheduler) run(ctx context.Context) {
-	s.logger.Info("bot scheduler started", slog.Duration("period", s.checkPeriod))
+func (s *Scheduler) Run(ctx context.Context) {
+	s.logger.Info("subscription schedulers started", slog.Duration("period", s.checkPeriod))
 	t := time.NewTicker(s.checkPeriod)
 	defer t.Stop()
 	for {
 		select {
 		case <-ctx.Done():
-			s.logger.Info("bot scheduler stopped")
+			s.logger.Info("subscription schedulers stopped")
 			return
 		case <-t.C:
-			s.logger.Debug("scheduler tick started")
+			s.logger.Debug("schedulers tick started")
 			started := time.Now()
 			s.tick(ctx)
-			s.logger.Debug("scheduler tick completed", slog.Duration("duration", time.Since(started)))
+			s.logger.Debug("schedulers tick completed", slog.Duration("duration", time.Since(started)))
 		}
 	}
 }
 
 // tick — одна итерация рассылки: планировщик просто дергает сервис.
-func (s *scheduler) tick(ctx context.Context) {
+func (s *Scheduler) tick(ctx context.Context) {
 	s.logger.Debug("tick: started")
 	started := time.Now()
 	sent, err := s.svc.DispatchDue(ctx)
