@@ -11,12 +11,13 @@ import (
 // Загрузка конфигурации из config.yaml через cleanenv
 
 type Config struct {
-	Server    ServerConfig    `yaml:"server"`
-	Scheduler SchedulerConfig `yaml:"schedulers"`
-	Postgres  PostgresConfig  `yaml:"postgres"`
-	CoinGecko CoinGeckoConfig `yaml:"coingecko"`
-	Telegram  TelegramConfig  `yaml:"telegram"`
-	Logger    LoggerConfig    `yaml:"logger"`
+	Server              ServerConfig    `yaml:"server"`
+	SchedulerDispatcher SchedulerConfig `yaml:"scheduler_dispatcher"`
+	SchedulerFetcher    SchedulerConfig `yaml:"scheduler_fetcher"`
+	Postgres            PostgresConfig  `yaml:"postgres"`
+	CoinGecko           CoinGeckoConfig `yaml:"coingecko"`
+	Telegram            TelegramConfig  `yaml:"telegram"`
+	Logger              LoggerConfig    `yaml:"logger"`
 }
 
 type ServerConfig struct {

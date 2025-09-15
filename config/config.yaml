@@ -5,7 +5,11 @@ server:
   idle_timeout: 60s
   shutdown_timeout: 10s
 
-scheduler:
+scheduler_dispatcher:
+  enabled: true
+  interval: 15s
+
+scheduler_fetcher:
   enabled: true
   interval: 5m
 

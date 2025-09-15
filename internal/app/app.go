@@ -89,8 +89,8 @@ func Run() error {
 
 	// schedulers
 	var updater *scheduler_fetcher.Scheduler
-	if cfg.Scheduler.Enabled {
-		updater = scheduler_fetcher.NewScheduler(ratesSvc, cfg.Scheduler.Interval, appLog)
+	if cfg.SchedulerFetcher.Enabled {
+		updater = scheduler_fetcher.NewScheduler(ratesSvc, cfg.SchedulerFetcher.Interval, appLog)
 	}
 
 	// telegram bot
@@ -100,7 +100,7 @@ func Run() error {
 		if token == "" {
 			return errors.New("telegram enabled but TELEGRAM_BOT_TOKEN is empty")
 		}
-		botSched := scheduler_dispatcher.NewScheduler(subsSvc, cfg.Scheduler.Interval, appLog)
+		botSched := scheduler_dispatcher.NewScheduler(subsSvc, cfg.SchedulerDispatcher.Interval, appLog)
 		bot, err = botpkg.New(
 			tbot,
 			ratesSvc,
