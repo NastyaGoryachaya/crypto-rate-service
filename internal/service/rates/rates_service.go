@@ -90,7 +90,7 @@ func (s *Service) GetLatestBySymbol(ctx context.Context, symbol string, from, to
 
 	// Нормализуем окно времени: если не задано — последние 24 часа; всегда UTC
 	if to.IsZero() {
-		to = utils.NowFunc().UTC()
+		to = utils.NowFunc()
 	} else {
 		to = to.UTC()
 	}

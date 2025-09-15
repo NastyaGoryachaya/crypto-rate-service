@@ -75,16 +75,16 @@ func Run() error {
 	subsSvc := subsvc.New(tbot, subsRepo, provider, appLog)
 
 	// http
-	e := echo.New()
+	httpServer := echo.New()
 	rh := web.NewRatesHandler(appLog, ratesSvc, cfg.Server.ReadTimeout)
-	rh.RegisterRoutes(e)
+	rh.RegisterRoutes(httpServer)
 
 	serv := &http.Server{
 		Addr:         cfg.Server.Addr,
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 		IdleTimeout:  cfg.Server.IdleTimeout,
-		Handler:      e,
+		Handler:      httpServer,
 	}
 
 	// schedulers
@@ -125,7 +125,7 @@ func Run() error {
 
 	appLog.Info("starting http server", slog.String("addr", cfg.Server.Addr))
 	go func() {
-		if err := e.StartServer(serv); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := httpServer.StartServer(serv); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			appLog.Error("http server error", slog.String("error", err.Error()))
 		}
 	}()
@@ -134,11 +134,11 @@ func Run() error {
 	<-ctx.Done()
 
 	// graceful shutdown
-	shCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
 
-	if e != nil {
-		_ = e.Shutdown(shCtx)
+	if httpServer != nil {
+		_ = httpServer.Shutdown(shCtx)
 	}
 	if bot != nil {
 		bot.Stop()

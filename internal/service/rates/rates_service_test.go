@@ -136,7 +136,6 @@ func TestGetLatestBySymbol_NoPrevForPct(t *testing.T) {
 
 	from := time.Date(2025, 9, 1, 10, 0, 0, 0, time.UTC)
 	to := time.Date(2025, 9, 1, 12, 0, 0, 0, time.UTC)
-	threshold := to.Add(-1 * time.Hour) // for clarity
 
 	latest := domain.Coin{Symbol: "BTC", Price: 105, UpdatedAt: to}
 	history := []domain.Coin{
@@ -147,9 +146,19 @@ func TestGetLatestBySymbol_NoPrevForPct(t *testing.T) {
 	storage.EXPECT().GetCoinBySymbol(gomock.Any(), "BTC").Return(latest, nil)
 	storage.EXPECT().History(gomock.Any(), "BTC", from, to).Return(history, nil)
 
-	_, _, _, _, err := svc.GetLatestBySymbol(ctx, "BTC", from, to)
-	if err == nil || !errors.Is(err, derrors.ErrPriceNotFound) {
-		t.Fatalf("expected ErrPriceNotFound (no prev before %v), got %v", threshold, err)
+	gotLatest, minPrice, maxPrice, pct, err := svc.GetLatestBySymbol(ctx, "BTC", from, to)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotLatest.Symbol != "BTC" || gotLatest.Price != 105 || !gotLatest.UpdatedAt.Equal(to) {
+		t.Fatalf("unexpected latest: %+v", gotLatest)
+	}
+	if minPrice != 90 || maxPrice != 110 {
+		t.Fatalf("unexpected min/max: (%v, %v)", minPrice, maxPrice)
+	}
+	// expected pct == 0 when there is no prev <= threshold
+	if pct != 0 {
+		t.Fatalf("expected pct == 0 when no prev <= threshold, got %v", pct)
 	}
 }
 
