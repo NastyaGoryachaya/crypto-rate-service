@@ -201,8 +201,13 @@ func TestGetLatestBySymbol_Success(t *testing.T) {
 // -------------------------
 
 func TestFetchAndSaveCurrency_ProviderError(t *testing.T) {
-	ctx, ctrl, _, provider, svc := setupSvc(t)
+	ctx, ctrl, storage, provider, svc := setupSvc(t)
 	defer ctrl.Finish()
+
+	// теперь сервис сначала читает список символов из стораджа
+	storage.EXPECT().GetAllCoins(gomock.Any()).Return([]domain.Coin{
+		{Symbol: "BTC"},
+	}, nil)
 
 	provider.EXPECT().FetchRates(gomock.Any()).Return(nil, errors.New("provider down"))
 
@@ -216,12 +221,21 @@ func TestFetchAndSaveCurrency_SaveError(t *testing.T) {
 	ctx, ctrl, storage, provider, svc := setupSvc(t)
 	defer ctrl.Finish()
 
+	// список символов, по которым нужно сохранить цены
+	storage.EXPECT().GetAllCoins(gomock.Any()).Return([]domain.Coin{
+		{Symbol: "BTC"},
+	}, nil)
+
 	now := time.Date(2025, 9, 1, 12, 0, 0, 0, time.UTC)
-	items := []domain.Coin{
-		{Symbol: "BTC", Price: 100, UpdatedAt: now},
+	itemsFromProvider := []domain.Coin{
+		{Symbol: "BTC", Price: 100, UpdatedAt: now}, // UpdatedAt не нулевой — сервис не будет его затирать
 	}
-	provider.EXPECT().FetchRates(gomock.Any()).Return(items, nil)
-	storage.EXPECT().SaveCoins(gomock.Any(), items).Return(errors.New("db write failed"))
+	provider.EXPECT().FetchRates(gomock.Any()).Return(itemsFromProvider, nil)
+
+	// Ожидаем, что сервис передаст дальше только те элементы, что есть в symbols (BTC)
+	storage.EXPECT().SaveCoins(gomock.Any(), []domain.Coin{
+		{Symbol: "BTC", Price: 100, UpdatedAt: now},
+	}).Return(errors.New("db write failed"))
 
 	err := svc.FetchAndSaveCurrency(ctx)
 	if err == nil || !errors.Is(err, derrors.ErrInternal) {
@@ -233,13 +247,24 @@ func TestFetchAndSaveCurrency_Success(t *testing.T) {
 	ctx, ctrl, storage, provider, svc := setupSvc(t)
 	defer ctrl.Finish()
 
+	// сервис сначала получит список поддерживаемых символов
+	storage.EXPECT().GetAllCoins(gomock.Any()).Return([]domain.Coin{
+		{Symbol: "BTC"},
+		{Symbol: "ETH"},
+	}, nil)
+
 	now := time.Date(2025, 9, 1, 12, 0, 0, 0, time.UTC)
-	items := []domain.Coin{
+	itemsFromProvider := []domain.Coin{
 		{Symbol: "BTC", Price: 100, UpdatedAt: now},
 		{Symbol: "ETH", Price: 200, UpdatedAt: now},
 	}
-	provider.EXPECT().FetchRates(gomock.Any()).Return(items, nil)
-	storage.EXPECT().SaveCoins(gomock.Any(), items).Return(nil)
+	provider.EXPECT().FetchRates(gomock.Any()).Return(itemsFromProvider, nil)
+
+	// ожидаем, что в SaveCoins уйдут обе монеты в верхнем регистре символов
+	storage.EXPECT().SaveCoins(gomock.Any(), []domain.Coin{
+		{Symbol: "BTC", Price: 100, UpdatedAt: now},
+		{Symbol: "ETH", Price: 200, UpdatedAt: now},
+	}).Return(nil)
 
 	if err := svc.FetchAndSaveCurrency(ctx); err != nil {
 		t.Fatalf("unexpected error: %v", err)

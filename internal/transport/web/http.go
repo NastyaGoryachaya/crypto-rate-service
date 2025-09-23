@@ -10,7 +10,6 @@ import (
 
 	"log/slog"
 
-	"github.com/NastyaGoryachaya/crypto-rate-service/internal/consts"
 	"github.com/NastyaGoryachaya/crypto-rate-service/internal/domain"
 	errs "github.com/NastyaGoryachaya/crypto-rate-service/internal/errors"
 	"github.com/NastyaGoryachaya/crypto-rate-service/internal/interfaces"
@@ -116,14 +115,6 @@ func (h *RatesHandler) GetRateBySymbol(c echo.Context) error {
 	if symbol == "" {
 		return c.JSON(http.StatusBadRequest, echo.Map{
 			"error": "symbol_required",
-		})
-	}
-
-	// Проверяем, поддерживается ли символ
-	if !consts.IsTracked(symbol) {
-		return c.JSON(http.StatusBadRequest, echo.Map{
-			"error":  "unsupported_symbol",
-			"symbol": symbol,
 		})
 	}
 

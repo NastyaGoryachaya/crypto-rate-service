@@ -1,9 +1,13 @@
+ifneq (,$(wildcard .env))
+include .env
+export $(shell sed 's/=.*//' .env)
+endif
+
 APP_NAME=crypto-rate-service
 CMD_DIR=cmd/app
 BINARY=bin/$(APP_NAME)
 DOCKER_IMAGE=$(APP_NAME):latest
 MIGRATIONS_PATH=./migrations
-DB_URL=postgres://postgres:postgres@localhost:5432/crypto?sslmode=disable
 
 .PHONY: run build tidy fmt lint test docker-build docker-up docker-down migrate-up migrate-down migrate-create docker-logs
 

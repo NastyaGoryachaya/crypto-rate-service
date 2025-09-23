@@ -1,31 +1,23 @@
 openapi: 3.0.3
 info:
-  title: Crypto Rate Service
-  version: 1.0.0
-  description: >
-    REST API для получения курсов криптовалют и управления подписками на рассылку.
-    Значения минимальной/максимальной цены считаются за окно последних 24 часов,
-    процент — изменение за последний час, если не указано иное.
-
-servers:
-  - url: http://localhost:8080
-    description: Local
-
+  title: Crypto Rate Service API
+  version: "1.0.0"
 tags:
   - name: Rates
-    description: Получение курсов и статистики
-  - name: Subscriptions
-    description: Управление подписками на рассылку (бот)
+    description: >
+      REST API для получения курсов криптовалют и управления подписками на рассылку.
+          Значения минимальной/максимальной цены считаются за окно последних 24 часов,
+          процент — изменение за последний час.
 
 paths:
   /rates:
     get:
       tags: [Rates]
-      summary: Получить список актуальных курсов по всем монетам
-      description: Возвращает массив с актуальной ценой для поддерживаемых монет.
+      summary: Список актуальных курсов
+      description: Возвращает последнюю цену для всех отслеживаемых символов.
       responses:
         '200':
-          description: Успешный ответ
+          description: ОК
           content:
             application/json:
               schema:
@@ -33,244 +25,157 @@ paths:
                 items:
                   $ref: '#/components/schemas/Rate'
               examples:
-                ok:
+                empty:
+                  summary: Пустой список
+                  value: []
+                sample:
+                  summary: Несколько курсов
                   value:
                     - symbol: BTC
-                      price: 61234.12
-                      updated_at: '2025-09-15T12:30:14Z'
+                      price: 61234.56
+                      updated_at: "2025-09-16T12:34:56Z"
                     - symbol: ETH
                       price: 4524.47
-                      updated_at: '2025-09-15T12:30:14Z'
+                      updated_at: "2025-09-16T12:30:14Z"
+        '404':
+          description: Цены не найдены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: prices_not_found
         '500':
-          $ref: '#/components/responses/InternalError'
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: internal_server_error
 
   /rates/{symbol}:
     get:
       tags: [Rates]
-      summary: Получить текущий курс и статистику по монете
-      parameters:
-        - $ref: '#/components/parameters/Symbol'
-        - $ref: '#/components/parameters/From'
-        - $ref: '#/components/parameters/To'
-      responses:
-        '200':
-          description: Успешный ответ
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RateStats'
-              examples:
-                ok:
-                  value:
-                    symbol: ETH
-                    price: 4524.47
-                    min_24h: 4524.47
-                    max_24h: 4539.63
-                    change_1h_pct: -0.14
-                    updated_at: '2025-09-15T12:30:14Z'
-        '404':
-          description: Монета или данные не найдены
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DomainError'
-              examples:
-                coin_not_found:
-                  value:
-                    code: COIN_NOT_FOUND
-                    message: coin not found
-                    details: { symbol: "DOGE" }
-                price_not_found:
-                  value:
-                    code: PRICE_NOT_FOUND
-                    message: price not found for time window
-                    details: { symbol: "ETH" }
-        '500':
-          $ref: '#/components/responses/InternalError'
-
-  /subscriptions:
-    post:
-      tags: [Subscriptions]
-      summary: Включить/обновить подписку
+      summary: Актуальный курс по символу с 24ч статистикой
       description: >
-        Включает рассылку для чата с указанным интервалом. Если подписка уже есть — обновляет интервал и включает.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/SubscriptionUpsert'
-            examples:
-              enable:
-                value: { chat_id: 123456789, interval_minutes: 15 }
+        Возвращает последнюю цену по `symbol`, минимальную/максимальную за последние 24 часа
+        и процентное изменение за последний час. Поддерживаются только отслеживаемые символы.
+      parameters:
+        - $ref: '#/components/parameters/SymbolParam'
       responses:
         '200':
-          description: Подписка создана/обновлена
+          description: ОК
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Subscription'
+                $ref: '#/components/schemas/Rate'
+              example:
+                symbol: ETH
+                price: 4524.47
+                min_24h: 4524.47
+                max_24h: 4539.63
+                change_1h_pct: -0.14
+                updated_at: "2025-09-16T12:30:14Z"
         '400':
-          $ref: '#/components/responses/BadRequest'
-        '500':
-          $ref: '#/components/responses/InternalError'
-
-  /subscriptions/{chat_id}:
-    delete:
-      tags: [Subscriptions]
-      summary: Выключить подписку
-      parameters:
-        - $ref: '#/components/parameters/ChatID'
-      responses:
-        '204':
-          description: Подписка отключена
-        '404':
-          description: Подписка не найдена
+          description: Неверный запрос (пустой или неподдерживаемый символ)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DomainError'
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                required:
+                  summary: Отсутствует символ
+                  value: { error: symbol_required }
+                unsupported:
+                  summary: Символ не отслеживается
+                  value: { error: unsupported_symbol, symbol: ABC }
+        '404':
+          description: Монета или цены не найдены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                coin:
+                  summary: Монета не найдена
+                  value: { error: coin_not_found, symbol: DOGE }
+                prices:
+                  summary: Цены за период отсутствуют
+                  value: { error: prices_not_found, symbol: ETH }
         '500':
-          $ref: '#/components/responses/InternalError'
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: internal_server_error
 
 components:
   parameters:
-    Symbol:
+    SymbolParam:
       name: symbol
       in: path
       required: true
-      description: Символ монеты (например, BTC, ETH). Регистр не важен.
+      description: Символ криптовалюты (например, BTC, ETH). Регистр не важен.
       schema:
         type: string
         minLength: 1
-    From:
-      name: from
-      in: query
-      required: false
-      description: Начало окна анализа (ISO 8601). По умолчанию now-24h.
-      schema:
-        type: string
-        format: date-time
-    To:
-      name: to
-      in: query
-      required: false
-      description: Конец окна анализа (ISO 8601). По умолчанию now.
-      schema:
-        type: string
-        format: date-time
-    ChatID:
-      name: chat_id
-      in: path
-      required: true
-      description: Идентификатор чата (Telegram chat ID).
-      schema:
-        type: integer
-        format: int64
-        minimum: 1
+        example: BTC
 
   schemas:
     Rate:
       type: object
-      description: Текущая цена монеты.
-      properties:
-        symbol:
-          type: string
-        price:
-          type: number
-          format: double
-        updated_at:
-          type: string
-          format: date-time
       required: [symbol, price, updated_at]
-
-    RateStats:
-      type: object
-      description: Текущая цена и статистика.
       properties:
         symbol:
           type: string
+          description: Символ монеты.
+          example: BTC
         price:
           type: number
           format: double
+          description: Последняя цена.
+          example: 61234.56
         min_24h:
           type: number
           format: double
+          nullable: true
+          description: Минимальная цена за последние 24 часа.
+          example: 60000.00
         max_24h:
           type: number
           format: double
+          nullable: true
+          description: Максимальная цена за последние 24 часа.
+          example: 62000.00
         change_1h_pct:
           type: number
           format: double
-          description: Процент изменения за последний час (знак +/−).
+          nullable: true
+          description: Процентное изменение за последний час (в процентах, без знака %). Может быть отрицательным.
+          example: -0.14
         updated_at:
           type: string
           format: date-time
-      required: [symbol, price, updated_at]
+          description: Время обновления цены (UTC).
+          example: "2025-09-16T12:34:56Z"
 
-    Subscription:
+    ErrorResponse:
       type: object
-      description: Подписка на рассылку курсов.
+      required: [error]
       properties:
-        chat_id:
-          type: integer
-          format: int64
-        interval_minutes:
-          type: integer
-          minimum: 1
-        enabled:
-          type: boolean
-        created_at:
+        error:
           type: string
-          format: date-time
-      required: [chat_id, interval_minutes, enabled]
-
-    SubscriptionUpsert:
-      type: object
-      properties:
-        chat_id:
-          type: integer
-          format: int64
-        interval_minutes:
-          type: integer
-          minimum: 1
-      required: [chat_id, interval_minutes]
-
-    DomainError:
-      type: object
-      description: Единая доменная ошибка.
-      properties:
-        code:
+          description: Код ошибки.
+          enum:
+            - symbol_required
+            - unsupported_symbol
+            - coin_not_found
+            - prices_not_found
+            - internal_server_error
+        symbol:
           type: string
-          description: Код ошибки (например, COIN_NOT_FOUND, PRICE_NOT_FOUND, SUBSCRIPTION_NOT_FOUND, VALIDATION_ERROR, INTERNAL).
-        message:
-          type: string
-        details:
-          type: object
-          additionalProperties: true
-      required: [code, message]
-
-  responses:
-    BadRequest:
-      description: Невалидный запрос
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/DomainError'
-          examples:
-            validation:
-              value:
-                code: VALIDATION_ERROR
-                message: invalid interval
-                details: { interval_minutes: 0 }
-    InternalError:
-      description: Внутренняя ошибка
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/DomainError'
-          examples:
-            internal:
-              value:
-                code: INTERNAL
-                message: internal server error
+          description: Символ, к которому относится ошибка (если применимо).
+          example: ETH

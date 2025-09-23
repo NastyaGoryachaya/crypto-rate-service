@@ -5,15 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/NastyaGoryachaya/crypto-rate-service/internal/consts"
 	errs "github.com/NastyaGoryachaya/crypto-rate-service/internal/errors"
 	"github.com/NastyaGoryachaya/crypto-rate-service/internal/pkg/botfmt"
 	"gopkg.in/telebot.v4"
 )
+
+var TrackedCoins = []string{"BTC", "ETH"}
 
 var ErrInvalidInterval = errors.New("invalid interval")
 
@@ -53,8 +55,8 @@ func (b *Bot) handleRates(c telebot.Context) error {
 
 	symbol := args[0]
 	symbol = strings.ToUpper(symbol)
-	if !consts.IsTracked(symbol) {
-		return c.Send("Монета не поддерживается. Доступны: BTC, ETH")
+	if !slices.Contains(TrackedCoins, symbol) {
+		return c.Send(fmt.Sprintf("Монета не поддерживается. Доступны: %s", strings.Join(TrackedCoins, ", ")))
 	}
 	now := time.Now().UTC()
 	from := now.Add(-24 * time.Hour)

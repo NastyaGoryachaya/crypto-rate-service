@@ -3,11 +3,11 @@ package rates
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
-	"github.com/NastyaGoryachaya/crypto-rate-service/internal/consts"
 	"github.com/NastyaGoryachaya/crypto-rate-service/internal/domain"
 	errs "github.com/NastyaGoryachaya/crypto-rate-service/internal/errors"
 	"github.com/NastyaGoryachaya/crypto-rate-service/internal/interfaces"
@@ -19,7 +19,6 @@ type Service struct {
 	storage        interfaces.Storage
 	cryptoProvider interfaces.CryptoProvider
 	logger         *slog.Logger
-	tracked        []string
 }
 
 func NewService(storage interfaces.Storage, provider interfaces.CryptoProvider, logger *slog.Logger) *Service {
@@ -27,16 +26,21 @@ func NewService(storage interfaces.Storage, provider interfaces.CryptoProvider, 
 		storage:        storage,
 		cryptoProvider: provider,
 		logger:         logger,
-		tracked:        consts.TrackedCoins,
 	}
 }
 
 // FetchAndSaveCurrency — получает список монет, запрашивает их курсы у провайдера и сохраняет цены в БД.
 func (s *Service) FetchAndSaveCurrency(ctx context.Context) error {
+	symbols, err := s.storage.GetAllCoins(ctx)
+	if err != nil {
+		s.logger.Error("failed to get all coins from storage", "err", err)
+		return fmt.Errorf("%w: storage.GetAllCoins: %w", errs.ErrInternal, err)
+	}
+
 	rates, err := s.cryptoProvider.FetchRates(ctx)
 	if err != nil {
 		s.logger.Error("fetch rates", "err", err)
-		return errs.ErrInternal
+		return fmt.Errorf("%w: provider.FetchRates: %w", errs.ErrInternal, err)
 	}
 
 	// создаём map для быстрого поиска цены по символу
@@ -45,10 +49,10 @@ func (s *Service) FetchAndSaveCurrency(ctx context.Context) error {
 		rateMap[strings.ToUpper(r.Symbol)] = r
 	}
 
-	items := make([]domain.Coin, 0, len(s.tracked))
+	items := make([]domain.Coin, 0, len(symbols))
 	now := utils.NowFunc()
-	for _, sym := range s.tracked {
-		u := strings.ToUpper(sym)
+	for _, sym := range symbols {
+		u := strings.ToUpper(sym.Symbol)
 		r, ok := rateMap[u]
 		if !ok {
 			s.logger.Warn("missing rate for coin", "symbol", u)
@@ -63,7 +67,7 @@ func (s *Service) FetchAndSaveCurrency(ctx context.Context) error {
 
 	if err := s.storage.SaveCoins(ctx, items); err != nil {
 		s.logger.Error("save prices to db failed", "count", len(items), "err", err)
-		return errs.ErrInternal
+		return fmt.Errorf("%w: storage.SaveCoins(count=%d): %w", errs.ErrInternal, len(items), err)
 	}
 	s.logger.Info("rates saved", "count", len(items))
 
@@ -74,7 +78,7 @@ func (s *Service) GetLatest(ctx context.Context) ([]domain.Coin, error) {
 	items, err := s.storage.GetAllCoins(ctx)
 	if err != nil {
 		s.logger.Error("failed to get all coins", "err", err)
-		return nil, errs.ErrInternal
+		return nil, fmt.Errorf("%w: storage.GetAllCoins: %w", errs.ErrInternal, err)
 	}
 	if len(items) == 0 {
 		s.logger.Warn("no latest coins available")
@@ -108,14 +112,14 @@ func (s *Service) GetLatestBySymbol(ctx context.Context, symbol string, from, to
 			return domain.Coin{}, 0, 0, 0, errs.ErrCoinNotFound
 		}
 		s.logger.Error("failed to get coin by symbol", "symbol", symbol, "err", err)
-		return domain.Coin{}, 0, 0, 0, errs.ErrInternal
+		return domain.Coin{}, 0, 0, 0, fmt.Errorf("%w: storage.GetCoinBySymbol(%s): %w", errs.ErrInternal, symbol, err)
 	}
 
 	// История в окне [from..to]
 	s.logger.Debug("loading history window", "symbol", symbol, "from", from, "to", to)
 	rows, err := s.storage.History(ctx, symbol, from, to)
 	if err != nil {
-		return domain.Coin{}, 0, 0, 0, errs.ErrInternal
+		return domain.Coin{}, 0, 0, 0, fmt.Errorf("%w: storage.History(%s): %w", errs.ErrInternal, symbol, err)
 	}
 	if len(rows) == 0 {
 		return domain.Coin{}, 0, 0, 0, errs.ErrPriceNotFound
