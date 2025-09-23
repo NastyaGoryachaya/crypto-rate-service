@@ -1,0 +1,181 @@
+openapi: 3.0.3
+info:
+  title: Crypto Rate Service API
+  version: "1.0.0"
+tags:
+  - name: Rates
+    description: >
+      REST API для получения курсов криптовалют и управления подписками на рассылку.
+          Значения минимальной/максимальной цены считаются за окно последних 24 часов,
+          процент — изменение за последний час.
+
+paths:
+  /rates:
+    get:
+      tags: [Rates]
+      summary: Список актуальных курсов
+      description: Возвращает последнюю цену для всех отслеживаемых символов.
+      responses:
+        '200':
+          description: ОК
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Rate'
+              examples:
+                empty:
+                  summary: Пустой список
+                  value: []
+                sample:
+                  summary: Несколько курсов
+                  value:
+                    - symbol: BTC
+                      price: 61234.56
+                      updated_at: "2025-09-16T12:34:56Z"
+                    - symbol: ETH
+                      price: 4524.47
+                      updated_at: "2025-09-16T12:30:14Z"
+        '404':
+          description: Цены не найдены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: prices_not_found
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: internal_server_error
+
+  /rates/{symbol}:
+    get:
+      tags: [Rates]
+      summary: Актуальный курс по символу с 24ч статистикой
+      description: >
+        Возвращает последнюю цену по `symbol`, минимальную/максимальную за последние 24 часа
+        и процентное изменение за последний час. Поддерживаются только отслеживаемые символы.
+      parameters:
+        - $ref: '#/components/parameters/SymbolParam'
+      responses:
+        '200':
+          description: ОК
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rate'
+              example:
+                symbol: ETH
+                price: 4524.47
+                min_24h: 4524.47
+                max_24h: 4539.63
+                change_1h_pct: -0.14
+                updated_at: "2025-09-16T12:30:14Z"
+        '400':
+          description: Неверный запрос (пустой или неподдерживаемый символ)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                required:
+                  summary: Отсутствует символ
+                  value: { error: symbol_required }
+                unsupported:
+                  summary: Символ не отслеживается
+                  value: { error: unsupported_symbol, symbol: ABC }
+        '404':
+          description: Монета или цены не найдены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                coin:
+                  summary: Монета не найдена
+                  value: { error: coin_not_found, symbol: DOGE }
+                prices:
+                  summary: Цены за период отсутствуют
+                  value: { error: prices_not_found, symbol: ETH }
+        '500':
+          description: Внутренняя ошибка сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: internal_server_error
+
+components:
+  parameters:
+    SymbolParam:
+      name: symbol
+      in: path
+      required: true
+      description: Символ криптовалюты (например, BTC, ETH). Регистр не важен.
+      schema:
+        type: string
+        minLength: 1
+        example: BTC
+
+  schemas:
+    Rate:
+      type: object
+      required: [symbol, price, updated_at]
+      properties:
+        symbol:
+          type: string
+          description: Символ монеты.
+          example: BTC
+        price:
+          type: number
+          format: double
+          description: Последняя цена.
+          example: 61234.56
+        min_24h:
+          type: number
+          format: double
+          nullable: true
+          description: Минимальная цена за последние 24 часа.
+          example: 60000.00
+        max_24h:
+          type: number
+          format: double
+          nullable: true
+          description: Максимальная цена за последние 24 часа.
+          example: 62000.00
+        change_1h_pct:
+          type: number
+          format: double
+          nullable: true
+          description: Процентное изменение за последний час (в процентах, без знака %). Может быть отрицательным.
+          example: -0.14
+        updated_at:
+          type: string
+          format: date-time
+          description: Время обновления цены (UTC).
+          example: "2025-09-16T12:34:56Z"
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Код ошибки.
+          enum:
+            - symbol_required
+            - unsupported_symbol
+            - coin_not_found
+            - prices_not_found
+            - internal_server_error
+        symbol:
+          type: string
+          description: Символ, к которому относится ошибка (если применимо).
+          example: ETH

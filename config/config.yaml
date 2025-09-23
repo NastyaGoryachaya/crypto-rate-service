@@ -1,0 +1,42 @@
+server:
+  addr: ":8080"
+  read_timeout: 5s
+  write_timeout: 10s
+  idle_timeout: 60s
+  shutdown_timeout: 10s
+
+scheduler_dispatcher:
+  enabled: true
+  interval: 15s
+
+scheduler_fetcher:
+  enabled: true
+  interval: 5m
+
+postgres:
+  host: postgres
+  port: 5432
+  user: postgres
+  password: postgres
+  dbname: crypto
+  sslmode: disable
+  timeout: 5s
+  max_conns: 10
+  min_conns: 1
+  max_conn_lifetime: 1h
+  max_conn_idle_time: 30m
+
+coingecko:
+  base_url: "https://api.coingecko.com/api/v3"
+  coins: ["bitcoin", "ethereum"]   # id монет (не символы, а идентификаторы API)
+  currency: "usd"
+  timeout: 8s
+  user_agent: "crypto-rate-service/1.0"
+
+telegram:
+  enabled: true
+  default_auto_interval: 10   # minutes
+
+logger:
+  level: debug      # debug|info|warn|error
+  format: text     # text|json
